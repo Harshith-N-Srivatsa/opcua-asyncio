@@ -550,7 +550,7 @@ class UadpDataSetKeepAlive:
         return UadpDataSetKeepAlive(header)
 
 
-@dataclass
+#@dataclass
 class UadpDataSetMessage(Protocol):
     def message_to_binary(self) -> bytes:
         raise NotImplementedError("UadpDataSetMessage is a abstract class")

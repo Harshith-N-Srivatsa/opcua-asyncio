@@ -15,7 +15,6 @@ from asyncua.ua.uaprotocol_auto import (
     PubSubState,
 )
 from asyncua.ua.uatypes import (
-    LocalizedText,
     NodeId,
     Variant,
 )
@@ -36,6 +35,8 @@ class SubscribedDataSetMirror:
         self._nodes = {}
 
     async def _create_and_set_node(self, f: FieldMetaData):
+        if self._node is None:
+            raise RuntimeError("SubscribedDataSetMirror._node is not initialized. Did you forget to call on_state_change?")
         n = await self._node.add_variable(
             NodeId(NamespaceIndex=1), "1:" + str(f.Name), Variant(), datatype=f.DataType
         )
@@ -104,7 +105,7 @@ class SubScripedTargetVariables:
                     field.Value.StatusCode is not None
                     and not field.Value.StatusCode.is_good()
                 ):
-                    logger.info(f"Error field {field.Name} value with {field.Value}")
+                    logger.info("Error field %s value with %s", field.Name, field.Value)
                     # if status code is bad, check overridevalue handling to handle the cases
                     if (
                         cfg._cfg.OverrideValueHandling

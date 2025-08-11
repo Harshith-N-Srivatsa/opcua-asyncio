@@ -164,17 +164,20 @@ class OpcUdp(asyncio.DatagramProtocol):
 
     def datagram_received(self, data: bytes, source: Tuple[str, int]) -> None:
         try:
-            logger.debug(f"Recived Datagramm from {source} - {str(data)}")
+            logger.debug("Received Datagram from %s - %s", source, data)
             buffer = Buffer(data)
             msg = UadpNetworkMessage.from_binary(buffer)
             logger.debug(msg)
-            asyncio.ensure_future(self.reciver.got_uadp(msg))
+            if self.reciver is not None:
+                asyncio.ensure_future(self.reciver.got_uadp(msg))
+            else:
+                logger.warning("No receiver set — dropping UADP message")
         except Exception:
             logging.exception("Recived Invalid UadpPacket")
 
     def send_uadp(self, msgs: List[UadpNetworkMessage]) -> None:
         for msg in msgs:
-            logger.debug(f"Sending UadpMsg {msg}")
+            logger.debug("Sending UadpMsg %s", msg)
             self.transport.sendto(msg.to_binary(), self.cfg.Addr)
 
     def set_receiver(self, reciver: PubSubReciver) -> None:

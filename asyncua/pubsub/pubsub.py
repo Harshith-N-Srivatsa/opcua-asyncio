@@ -9,7 +9,7 @@ from asyncua.common.utils import Buffer
 from asyncua.pubsub.information_model import PubSubInformationModel
 import aiofiles
 
-from asyncua.ua.ua_binary import extensionobject_from_binary, from_binary, to_binary
+from asyncua.ua.ua_binary import extensionobject_from_binary, to_binary
 if TYPE_CHECKING:
     from asyncua.server.server import Server
 from asyncua.ua import String, PubSubConfigurationDataType, uaerrors
@@ -59,13 +59,17 @@ class PubSub(PubSubInformationModel):
         """
         Inits the Information Model
         """
+        if self._server is None:
+            raise RuntimeError("Server is not initialized")
         if self._node is None:
             self._node = self._server.get_node(NodeId(ObjectIds.PublishSubscribe))
             await self._init_node(self._node, self._server)
-            for pds in self._pds:
-                await pds._init_information_model(
-                    await self._node.get_child("0:PublishedDataSets"), self._server
-                )
+        node = self._node
+        if node is None:
+            raise RuntimeError("Node is not initialized")
+        published_data_sets_node = await node.get_child("0:PublishedDataSets")
+        for pds in self._pds:
+            await pds._init_information_model(published_data_sets_node, self._server)
             for con in self._con:
                 await con._init_information_model(self._server)
 
@@ -156,9 +160,9 @@ class PubSub(PubSubInformationModel):
                     await self.add_connection(PubSubConnection(con))
                 return
             else:
-                logger.error(f'File has Body of type: {ex_obj} instead of PubSubConfigurationDataType')
+                logger.error("File has ExtensionObject of type: %s instead of UABinaryFileDataType", ex_obj)
         else:
-            logger.error(f'File has ExtensionObject of type: {ex_obj} instead of UABinaryFileDataType')
+            logger.error("File has ExtensionObject of type: %s instead of UABinaryFileDataType", ex_obj)
         raise uaerrors.UaError(uaerrors.BadInvalidArgument)
 
     async def save_binary_file(self, file: Union[str, Path]) -> None:        # @TODO save structs and enums, namespaces

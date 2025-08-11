@@ -1,6 +1,5 @@
 import asyncio
-import io
-from typing import List, Tuple
+from typing import List
 from asyncua import pubsub
 from asyncua.common.node import Node
 from asyncua.common.utils import Buffer
@@ -12,12 +11,10 @@ from asyncua.pubsub.udp import UdpSettings
 from asyncua.server.server import Server
 from asyncua.ua.object_ids import ObjectIds
 from asyncua.ua.status_codes import StatusCodes
-from asyncua.ua.uaprotocol_auto import DataSetReaderDataType, ReaderGroupDataType
-from asyncua.ua.uatypes import Byte, DataValue, DateTime, ExtensionObject, Int16, Int32, NodeId, StatusCode, UInt16, UInt32, UInt64, Variant, VariantType
+from asyncua.ua.uatypes import Byte, DataValue, DateTime, Int16, Int32, NodeId, StatusCode, UInt16, UInt32, UInt64, Variant, VariantType
 import logging
 import pytest
 
-from tests.test_common import expect_file_creation
 _logger = logging.getLogger(__name__)
 
 
@@ -98,14 +95,14 @@ class OnDataRecived:
     values = {}
 
     async def on_dataset_recived(self, meta: pubsub.DataSetMeta, fields: List[pubsub.DataSetValue]):
-        _logger.info(f"Got Dataset {meta.Name}")
+        _logger.info("Got Dataset %s", meta.Name)
         if meta.Name not in self.values:
             self.values[meta.Name] = {}
         for f in fields:
             self.values[meta.Name][f.Meta.Name] = f.Value
 
     async def on_state_change(self, meta: pubsub.DataSetMeta, state):
-        _logger.info(f"State changed {meta.Name} - {state.name}")
+        _logger.info("State changed %s - %s", meta.Name, state.name)
 
 
 async def test_full_simple():
@@ -277,4 +274,3 @@ async def test_load_save_ua_binary_publisher(server: Server, tmpdir_factory):
     assert len(wgr._writer) == 1
     dsw = wgr.get_writer('Demo DataSetWriter')
     assert dsw is not None
-

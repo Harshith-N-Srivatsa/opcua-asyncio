@@ -85,7 +85,7 @@ class DataSetReader(PubSubInformationModel):
             self._cfg = DataSetReaderDataType()
         else:
             self._cfg = cfg
-        self._meta = DataSetMeta(cfg.DataSetMetaData)
+        self._meta = DataSetMeta(self._cfg.DataSetMetaData)
         self._subscriped = None
         if subscriped is not None:
             self._subscriped = subscriped
@@ -166,9 +166,7 @@ class DataSetReader(PubSubInformationModel):
         if self._subscriped:
             await self._subscriped.on_dataset_recived(self._meta, fields)
         else:
-            logger.warn(
-                f"DataSet {self._cfg.Name}: got Message without a SubsripedDataSet Handler"
-            )
+            logger.warning("DataSet %s: got Message without a SubsripedDataSet Handler", self._cfg.Name)
 
     def _datavalues_from_raw(
         self, data: UadpDataSetRaw, header: UadpDataSetMessageHeader
@@ -208,7 +206,7 @@ class DataSetReader(PubSubInformationModel):
                         self.timeout_ev.wait(), self._cfg.MessageReceiveTimeout * 1000
                     )
                 except asyncio.TimeoutError:
-                    logger.warn(f"{self._cfg.Name}: Timed out")
+                    logger.warning("%s: Timed out", self._cfg.Name)
                     await self._set_state(PubSubState.Error)
                     if self._subscriped:
                         await self._subscriped.on_state_change(self._cfg, PubSubState.Error)
@@ -353,7 +351,7 @@ class ReaderGroup(PubSubInformationModel):
         self._reader.append(reader)
         self._cfg.DataSetReaders.append(reader._cfg)
         if self.model_is_init():
-            await reader._init_information_model(self._node, self.server)
+            await reader._init_information_model(self._node, self._server)
 
     async def handle_msg(self, msg: UadpNetworkMessage) -> None:
         if msg.DataSetPayloadHeader is None or not msg.DataSetPayloadHeader:
@@ -383,9 +381,7 @@ class ReaderGroup(PubSubInformationModel):
                             await reader.handle_dataset(msg.Payload[i])
                             found_reader = True
         if not found_reader:
-            logger.info(
-                f"Got Message with no matching reader: {msg.Header.PublisherId} {msg}!"
-            )
+            logger.info("Got Message with no matching reader: %s %s!", msg.Header.PublisherId, msg)
 
     async def start(self):
         await self._set_state(PubSubState.Operational)
@@ -423,9 +419,12 @@ class ReaderGroup(PubSubInformationModel):
             "0:MaxNetworkMessageSize",
             Variant(self._cfg.MaxNetworkMessageSize, VariantType.UInt32),
         )
-        await self._node.add_variable(
-            NodeId(NamespaceIndex=1), "0:SecurityGroupId", self._cfg.SecurityGroupId
-        )
+        if self._node is not None:
+            await self._node.add_variable(
+                NodeId(NamespaceIndex=1), "0:SecurityGroupId", self._cfg.SecurityGroupId
+            )
+        else:
+            logger.warning("self._node is None, cannot add variable")
         await self.set_node_value(
             "0:GroupProperties",
             Variant(

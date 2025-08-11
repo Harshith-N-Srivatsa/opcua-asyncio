@@ -29,7 +29,7 @@ from ..ua.uaerrors import UaError
 from ..common.instantiate_util import instantiate
 from .reader import DataSetReader, ReaderGroup
 from .protocols import IPubSub, PubSubReciver
-from .writer import DataSetWriter, WriterGroup
+from .writer import WriterGroup
 from .uadp import UadpNetworkMessage
 from .udp import OpcUdp, UdpSettings
 import logging
@@ -148,7 +148,13 @@ class PubSubConnection(PubSubInformationModel):
         if self.model_is_init():
             await reader._init_information_model(self._node, self._server)
 
-    def get_writer_group(self, name: String) -> Optional[DataSetWriter]:
+    def get_config(self) -> PubSubConnectionDataType:
+        """
+        Returns the PubSubConnection configuration.
+        """
+        return self._cfg
+
+    def get_writer_group(self, name: String) -> Optional[DataSetReader]:
         """
         Returns a writer group via name, if found.
         """
@@ -165,7 +171,7 @@ class PubSubConnection(PubSubInformationModel):
         Removes a reader group from the connection
         """
         r = self.get_reader_group(name)
-        if r is not None:
+        if r is not None and r._node is not None:
             await r._node.delete()
             del r._meta
             del r
@@ -175,9 +181,9 @@ class PubSubConnection(PubSubInformationModel):
         Removes a writer group from the connection
         """
         w = self.get_writer_group(name)
-        if w is not None:
+        if w is not None and w._node is not None:
             await w._node.delete()
-            del w._meta
+            # del w._meta #No meta in DataSetWriter
             del w
 
     async def start(self) -> None:
@@ -185,7 +191,7 @@ class PubSubConnection(PubSubInformationModel):
         Starts the connection, which listens to incoming messages
         and sends messages from writers
         """
-        logging.info(f"Starting Connection {await self.get_name()}")
+        logging.info("Starting Connection %s", await self.get_name())
         loop = asyncio.get_event_loop()
         sock, _, _ = self._network_settings.create_socket()
         self._transport, self._protocol = await loop.create_datagram_endpoint(
@@ -201,12 +207,15 @@ class PubSubConnection(PubSubInformationModel):
             *[reader.start() for reader in self._reader_groups]
         )
         await reader_tasks
-        self._protocol.set_receiver(self._receiver)
+        if self._protocol is not None:
+            self._protocol.set_receiver(self._receiver)
+        else:
+            logger.warning("Protocol is None — cannot set receiver")
         await self._set_state(PubSubState.Operational)
 
     async def stop(self) -> None:
         """Stops alle activity of a connection"""
-        logging.info(f"Stopping Connection {await self.get_name()}")
+        logging.info("Stopping Connection %s", await self.get_name())
         reader_tasks = asyncio.gather(
             *[reader.stop() for reader in self._reader_groups]
         )
@@ -228,7 +237,11 @@ class PubSubConnection(PubSubInformationModel):
             raise UaError(
                 "Sending a Uadp Encoded Message is not supported with this connection"
             )
-        self._protocol.send_uadp([msg])
+        if self._protocol is not None:
+            self._protocol.send_uadp([msg])
+        else:
+            logger.error("Cannot send UADP message: protocol is None")
+            raise UaError("Cannot send UADP message: protocol is None")
 
     def set_if(self, ps: IPubSub) -> None:
         """
@@ -253,22 +266,28 @@ class PubSubConnection(PubSubInformationModel):
     async def _add_reader_group(self, rg: ReaderGroupDataType) -> NodeId:
         rgp = ReaderGroup(rg)
         await self.add_reader_group(rgp)
-        return rgp._node.nodeid
+        if rgp._node is not None:
+            return rgp._node.nodeid
+        else:
+            raise UaError("ReaderGroup node is not initialized")
 
     @uamethod
     async def _add_writer_group(self, wg: WriterGroupDataType) -> NodeId:
         wgp = WriterGroup(wg)
         await self.add_reader_group(wgp)
-        return wgp._node.nodeid
+        if wgp._node is not None:
+            return wgp._node.nodeid
+        else:
+            raise UaError("WriterGroup node is not initialized")
 
     @uamethod
     async def _remove_group(self, nid: NodeId) -> None:
         for r in self._reader_groups:
-            if r._node.nodeid == nid:
+            if r._node is not None and r._node.nodeid == nid:
                 await self.remove_reader_group(r)
                 return
         for w in self._writer_groups:
-            if w._node.nodeid == nid:
+            if w._node is not None and w._node.nodeid == nid:
                 await self.remove_writer_group(w)
                 return
         raise uaerrors.UaStatusCodeError(StatusCodes.BadNodeIdUnknown)
@@ -301,8 +320,9 @@ class PubSubConnection(PubSubInformationModel):
         await self.set_node_value(
             "0:ConnectionProperties", Variant(Value=self._cfg.ConnectionProperties, VariantType=VariantType.ExtensionObject),
         )
-        addr = await self._node.get_child("0:Address")
-        await addr.delete()
+        if self._node is not None:
+            addr = await self._node.get_child("0:Address")
+            await addr.delete()
         object_type_id = NodeId(ObjectIds.NetworkAddressUrlType, 0)
         await instantiate(
             con_var,
